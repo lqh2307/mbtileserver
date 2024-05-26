@@ -4,30 +4,28 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/consbio/mbtileserver/handlers"
+	"github.com/evalphobia/logrus_sentry"
+	"github.com/joho/godotenv"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/spf13/cobra"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 
-	"net"
-	"net/http"
-	"net/url"
-	"os"
-	"time"
-
-	"github.com/labstack/echo/v4"
-
-	"github.com/evalphobia/logrus_sentry"
-	"github.com/labstack/echo/v4/middleware"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
-
 	mbtiles "github.com/brendan-ward/mbtiles-go"
-	"github.com/consbio/mbtileserver/handlers"
+	log "github.com/sirupsen/logrus"
 )
 
 var rootCmd = &cobra.Command{
@@ -86,6 +84,11 @@ var (
 )
 
 func init() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	flags := rootCmd.Flags()
 	flags.StringVar(&host, "host", "0.0.0.0", "IP address to listen on. Default is all interfaces.")
 	flags.IntVarP(&port, "port", "p", -1, "Server port. Default is 443 if --cert or --tls options are used, otherwise 8000.")
@@ -337,25 +340,6 @@ func serve() {
 
 	// print number of services
 	log.Infof("Published %v services", svcSet.Size())
-
-	// watch filesystem for changes to tilesets
-	if enableReloadFSWatch {
-		watcher, err := NewFSWatcher(svcSet, generateID)
-		if err != nil {
-			log.Fatalln("Could not construct filesystem watcher")
-		}
-		defer watcher.Close()
-
-		for _, path := range strings.Split(tilePath, ",") {
-			log.Infof("Watching %v\n", path)
-			err = watcher.WatchDir((path))
-			if err != nil {
-				// If we cannot enable file watching, then this should be a fatal
-				// error during server startup
-				log.Fatalln("Could not enable filesystem watcher in", path, err)
-			}
-		}
-	}
 
 	e := echo.New()
 	e.HideBanner = true
